@@ -3,84 +3,102 @@ package gorm
 import (
 	"bytes"
 	"strings"
+	"sync"
 )
 
-// Namer is a function type which is given a string and return a string
+// Namer is a function which is given a string and return a string
 type Namer func(string) string
 
-// NamingStrategy represents naming strategies
+// NamingStrategy represents naming strategy functions for specific properties
 type NamingStrategy struct {
-	DB     Namer
-	Table  Namer
-	Column Namer
+	Default Namer
+	DB      Namer
+	Table   Namer
+	Column  Namer
 }
 
-// TheNamingStrategy is being initialized with defaultNamingStrategy
-var TheNamingStrategy = &NamingStrategy{
-	DB:     defaultNamer,
-	Table:  defaultNamer,
-	Column: defaultNamer,
+// the more question the more answer!
+
+// namingStrategy is the NamingStrategy.
+var namingStrategy = &NamingStrategy{
+	Default: defaultNamer,
 }
 
-// AddNamingStrategy sets the naming strategy
+// once to avoid modifying naming strategy once it's been set.
+var once sync.Once
+
+type property int
+
+const (
+	database property = iota
+	table
+	column
+)
+
+var cache = newSafeMap()
+
+// AddNamingStrategy sets NamingStrategy for once.
 func AddNamingStrategy(ns *NamingStrategy) {
-	if ns.DB == nil {
-		ns.DB = defaultNamer
-	}
-	if ns.Table == nil {
-		ns.Table = defaultNamer
-	}
-	if ns.Column == nil {
-		ns.Column = defaultNamer
-	}
-	TheNamingStrategy = ns
+	once.Do(func() {
+		if ns.Default == nil {
+			ns.Default = defaultNamer
+		}
+		namingStrategy = ns
+	})
 }
 
-// DBName alters the given name by DB
-func (ns *NamingStrategy) DBName(name string) string {
-	return ns.DB(name)
-}
-
-// TableName alters the given name by Table
-func (ns *NamingStrategy) TableName(name string) string {
-	return ns.Table(name)
-}
-
-// ColumnName alters the given name by Column
-func (ns *NamingStrategy) ColumnName(name string) string {
-	return ns.Column(name)
-}
-
-// ToDBName convert string to db name
+// ToDBName renames given name with database namer.
 func ToDBName(name string) string {
-	return TheNamingStrategy.DBName(name)
+	return namingStrategy.rename(name, database)
 }
 
-// ToTableName convert string to table name
+// ToTableName renames given name with table namer.
 func ToTableName(name string) string {
-	return TheNamingStrategy.TableName(name)
+	return namingStrategy.rename(name, table)
 }
 
-// ToColumnName convert string to db name
+// ToColumnName renames given name with column namer.
 func ToColumnName(name string) string {
-	return TheNamingStrategy.ColumnName(name)
+	return namingStrategy.rename(name, column)
 }
 
-var smap = newSafeMap()
+// rename renames given name with given property namer.
+// if no namer found for given property, default namer will be used.
+func (ns *NamingStrategy) rename(name string, property property) string {
+	if renamed := cache.Get(name); renamed != "" {
+		return renamed
+	}
 
+	var renamed string
+
+	namer := ns.namer(property)
+
+	renamed = namer(name)
+
+	cache.Set(name, renamed)
+
+	return renamed
+}
+
+func (ns *NamingStrategy) namer(property property) Namer {
+	switch property {
+	case database:
+		return ns.DB
+	case table:
+		return ns.Table
+	case column:
+		return ns.Column
+	default:
+		return ns.Default
+	}
+}
+
+// defaultNamer converts given string to snake_case
 func defaultNamer(name string) string {
 	const (
 		lower = false
 		upper = true
 	)
-
-	if v := smap.Get(name); v != "" {
-		return v
-	}
-
-	if name == "" {
-		return ""
-	}
 
 	var (
 		value                                    = commonInitialismsReplacer.Replace(name)
@@ -119,6 +137,5 @@ func defaultNamer(name string) string {
 	buf.WriteByte(value[len(value)-1])
 
 	s := strings.ToLower(buf.String())
-	smap.Set(name, s)
 	return s
 }

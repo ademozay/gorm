@@ -13,9 +13,9 @@ func TestTheNamingStrategy(t *testing.T) {
 		namer    gorm.Namer
 		expected string
 	}{
-		{name: "auth", expected: "auth", namer: gorm.TheNamingStrategy.DB},
-		{name: "userRestrictions", expected: "user_restrictions", namer: gorm.TheNamingStrategy.Table},
-		{name: "clientID", expected: "client_id", namer: gorm.TheNamingStrategy.Column},
+		{name: "auth", expected: "auth", namer: gorm.ToDBName},
+		{name: "userRestrictions", expected: "user_restrictions", namer: gorm.ToTableName},
+		{name: "clientID", expected: "client_id", namer: gorm.ToColumnName},
 	}
 
 	for _, c := range cases {
@@ -47,14 +47,16 @@ func TestNamingStrategy(t *testing.T) {
 		Column: columnNameNS,
 	}
 
+	gorm.AddNamingStrategy(ns)
+
 	cases := []struct {
 		name     string
 		namer    gorm.Namer
 		expected string
 	}{
-		{name: "auth", expected: "db_auth", namer: ns.DB},
-		{name: "user", expected: "tbl_user", namer: ns.Table},
-		{name: "password", expected: "col_password", namer: ns.Column},
+		{name: "auth", expected: "db_auth", namer: gorm.ToDBName},
+		{name: "user", expected: "tbl_user", namer: gorm.ToTableName},
+		{name: "password", expected: "col_password", namer: gorm.ToColumnName},
 	}
 
 	for _, c := range cases {
